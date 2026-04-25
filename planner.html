@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SFK Base Planner</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #12121e;
+  color: #d4d4d4;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  min-height: 100vh;
+  align-items: flex-start;
+}
+
+/* ── Map ─────────────────────────────────────────────────────────────────── */
+
+#map-section {
+  position: relative;
+  flex-shrink: 0;
+}
+
+
+#map-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 20;
+  display: flex;
+  gap: 6px;
+}
+
+.ctrl-btn {
+  background: rgba(18, 18, 38, 0.88);
+  color: #ccc;
+  border: 1px solid #4a4a6e;
+  padding: 5px 12px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  backdrop-filter: blur(4px);
+}
+.ctrl-btn:hover { background: rgba(55, 55, 100, 0.92); border-color: #7a7aaa; color: #eee; }
+
+#map-container {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+#map-img {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* ── Plots ───────────────────────────────────────────────────────────────── */
+
+.plot {
+  position: absolute;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.plot.empty:hover {
+  background: rgba(255, 245, 80, 0.28);
+  outline: 2px solid rgba(255, 225, 0, 0.55);
+  outline-offset: -1px;
+}
+
+.plot.filled:hover { filter: brightness(1.12); }
+
+.plot-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  pointer-events: none;
+  display: block;
+}
+
+.plot-clear {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 18px;
+  height: 18px;
+  background: #bb0000;
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 5;
+  border: 1.5px solid #ff5555;
+  line-height: 1;
+  transition: background 0.1s;
+}
+.plot-clear:hover { background: #880000; }
+
+/* Debug mode — toggle with the button to verify plot positions */
+body.debug .plot[data-type="regular"].empty,
+body.debug .plot[data-type="port"].empty {
+  background: rgba(80, 160, 255, 0.18);
+  outline: 1px dashed rgba(100, 170, 255, 0.7);
+  outline-offset: -1px;
+}
+body.debug .plot[data-type="small"].empty {
+  background: rgba(255, 190, 60, 0.18);
+  outline: 1px dashed rgba(255, 205, 80, 0.7);
+  outline-offset: -1px;
+}
+/* Plot ID labels in debug mode */
+body.debug .plot::after {
+  content: attr(data-id);
+  position: absolute;
+  bottom: 1px;
+  right: 3px;
+  font-size: 8px;
+  color: rgba(255,255,255,0.6);
+  pointer-events: none;
+  line-height: 1;
+}
+
+/* ── Building Menu ───────────────────────────────────────────────────────── */
+
+#building-menu {
+  position: fixed;
+  background: #1a1a2e;
+  border: 2px solid #3e3e68;
+  border-radius: 8px;
+  padding: 8px 6px 10px;
+  z-index: 200;
+  width: 208px;
+  max-height: 74vh;
+  overflow-y: auto;
+  display: none;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.7);
+}
+
+#menu-close {
+  float: right;
+  color: #555;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1.2;
+  user-select: none;
+}
+#menu-close:hover { color: #bbb; }
+
+.menu-category-label {
+  font-size: 9.5px;
+  color: #5a5a7a;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin: 9px 6px 3px;
+  padding-top: 8px;
+  border-top: 1px solid #252538;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #ccc;
+  user-select: none;
+  transition: background 0.1s;
+  clear: both;
+}
+.menu-item:hover { background: #252542; }
+
+.menu-item.menu-placed {
+  opacity: 0.32;
+}
+.menu-item.menu-placed:hover {
+  background: #2e1e1e;
+  opacity: 0.58;
+}
+
+.menu-item img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+/* ── Roster ──────────────────────────────────────────────────────────────── */
+
+#roster {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 175px;
+  background: rgba(18, 18, 46, 0.88);
+  backdrop-filter: blur(4px);
+  border: 1px solid #2a2a48;
+  border-radius: 8px;
+  padding: 12px 10px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.roster-heading {
+  font-size: 11px;
+  color: #7a7aaa;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-bottom: 10px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid #252540;
+}
+
+.roster-section { margin-bottom: 2px; }
+.roster-section + .roster-section { margin-top: 14px; }
+
+.roster-section-label {
+  font-size: 9.5px;
+  color: #4a4a6a;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 5px;
+}
+
+.roster-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #b8b8cc;
+}
+
+.roster-item img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+.roster-qty {
+  margin-left: auto;
+  background: #242440;
+  color: #bbb;
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 11px;
+  min-width: 26px;
+  text-align: center;
+}
+
+.roster-empty {
+  font-size: 11px;
+  color: #3a3a58;
+  font-style: italic;
+  padding: 2px 4px;
+}
+
+/* ── Debug toggle ────────────────────────────────────────────────────────── */
+
+#debug-btn {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  background: rgba(18, 18, 36, 0.75);
+  color: #4a4a6a;
+  border: 1px solid #2a2a44;
+  padding: 4px 10px;
+  font-size: 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: color 0.1s, border-color 0.1s;
+}
+#debug-btn:hover { color: #9a9aba; border-color: #4a4a6a; }
+
+/* ── Coord capture ───────────────────────────────────────────────────────── */
+
+#coord-btn {
+  position: fixed;
+  bottom: 12px;
+  right: 110px;
+  background: rgba(18, 18, 36, 0.75);
+  color: #4a4a6a;
+  border: 1px solid #2a2a44;
+  padding: 4px 10px;
+  font-size: 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: color 0.1s, border-color 0.1s;
+}
+#coord-btn:hover { color: #9a9aba; border-color: #4a4a6a; }
+body.coord-mode #coord-btn { color: #f0a040; border-color: #f0a040; }
+body.coord-mode #map-container { cursor: crosshair; }
+body.coord-mode .plot { pointer-events: none; opacity: 0.25; }
+
+#coord-display {
+  display: none;
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  background: rgba(10, 10, 24, 0.92);
+  border: 1px solid #f0a040;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: #f0a040;
+  z-index: 9999;
+  min-width: 200px;
+  max-height: 80vh;
+  overflow-y: auto;
+  font-family: monospace;
+  line-height: 1.7;
+}
+body.coord-mode #coord-display { display: block; }
+</style>
+</head>
+<body>
+
+<div id="map-section">
+  <div id="map-controls">
+    <button class="ctrl-btn" onclick="clearAll()">Clear All</button>
+    <button class="ctrl-btn" onclick="clearByType('regular')">Clear Regular</button>
+    <button class="ctrl-btn" onclick="clearByType('small')">Clear Small</button>
+  </div>
+  <div id="map-container">
+    <img id="map-img" src="StartingBase.png" alt="Starting Base">
+  </div>
+  <div id="roster">
+    <div class="roster-heading">Built Buildings</div>
+    <div class="roster-section">
+      <div class="roster-section-label">Regular</div>
+      <div id="roster-regular"><div class="roster-empty">None placed</div></div>
+    </div>
+    <div class="roster-section">
+      <div class="roster-section-label">Small</div>
+      <div id="roster-small"><div class="roster-empty">None placed</div></div>
+    </div>
+  </div>
+</div>
+
+<div id="building-menu">
+  <span id="menu-close" onclick="closeMenu()">✕</span>
+  <div id="menu-content"></div>
+</div>
+
+<button id="debug-btn" onclick="toggleDebug()">Debug Plots</button>
+<button id="coord-btn" onclick="toggleCoordMode()">📍 Capture Coords</button>
+<div id="coord-display"><b>Click map to capture coords</b><br><span style="font-size:10px;color:#aaa">Right-click log to copy</span><hr style="border-color:#333;margin:6px 0"><div id="coord-log"></div></div>
+
+<script>
+'use strict';
+
+// ── Building Data ─────────────────────────────────────────────────────────────
+
+const REGULAR_BUILDINGS = [
+  // Pinned — no category header, always first
+  { id: 'tavern',     name: 'Tavern',          icon: 'Building.Tavern.Icon.png',    pinned: true },
+  // Basic
+  { id: 'lumberyard', name: 'Lumberyard',      icon: 'Building.Lumber.Icon.png',    category: 'Basic' },
+  { id: 'quarry',     name: 'Quarry',          icon: 'Building.Quarry.Icon.png',    category: 'Basic' },
+  { id: 'goldmine',   name: 'Goldmine',        icon: 'Building.Goldmine.Icon.png',  category: 'Basic' },
+  { id: 'farm',       name: 'Farm',            icon: 'Building.Farm.Icon.png',      category: 'Basic' },
+  { id: 'hunter',     name: 'Hunter',          icon: 'Building.Hunter.Icon.png',    category: 'Basic' },
+  // Production
+  { id: 'sawmill',    name: 'Sawmill',         icon: 'Building.Sawmill.Icon.png',   category: 'Production' },
+  { id: 'windmill',   name: 'Windmill',        icon: 'Building.Windmill.Icon.png',  category: 'Production' },
+  { id: 'bakery',     name: 'Bakery',          icon: 'Building.Bakery.Icon.png',    category: 'Production' },
+  { id: 'brewery',    name: 'Brewery',         icon: 'Building.Brewery.Icon.png',   category: 'Production' },
+  { id: 'smelter',    name: 'Smelter',         icon: 'Building.Smelter.Icon.png',   category: 'Production' },
+  // Special
+  { id: 'stables',    name: 'Stables',         icon: 'Building.Stable.Icon.png',    category: 'Special' },
+  { id: 'graveyard',  name: 'Graveyard',       icon: 'Building.Graveyard.Icon.png', category: 'Special' },
+  { id: 'siege',      name: 'Siege Camp',      icon: 'Building.Siege.Icon.png',     category: 'Special' },
+  { id: 'coin',       name: 'Coin Stamper',    icon: 'Building.Coin.Icon.png',      category: 'Special' },
+  { id: 'elemental',  name: 'Elemental Tower', icon: 'Building.Elemental.Icon.png', category: 'Special' },
+  { id: 'monument',   name: 'Monument',        icon: 'Building.Monument.Icon.png',  category: 'Special' },
+  // Port — only shown on the port plot
+  { id: 'port',       name: 'Port',            icon: 'Building.Port.Icon.png',      category: 'Special', portOnly: true },
+];
+
+const SMALL_BUILDINGS = [
+  { id: 'house',      name: 'House',           icon: 'Building.Small.House.png' },
+  { id: 'forager',    name: 'Forager',         icon: 'Building.Small.Forager.png' },
+  { id: 'fisherhut',  name: 'Fisher Hut',      icon: 'Building.Small.Fisher.png' },
+  { id: 'decoration', name: 'Decoration',      icon: 'Building.Small.Decoration.png' },
+  { id: 'well',       name: 'Well',            icon: 'Building.Small.Well.png' },
+  { id: 'geologist',  name: 'Geologist Tent',  icon: 'Building.Small.Geologist.png' },
+];
+
+// ── Plot Definitions ──────────────────────────────────────────────────────────
+// Positions are approximate — click "Debug Plots" to see outlines and report
+// any that need adjusting. x/y = top-left offset from map image edge.
+
+const PLOT_DEFS = [
+  // Regular plots (12) — 50% larger (129×93), positions adjusted to keep same centers
+  { id: 'r1',        type: 'regular', x: 472, y:  22, w: 129, h: 93 },
+  { id: 'r2',        type: 'regular', x: 665, y:  22, w: 129, h: 93 },
+  { id: 'r3',        type: 'regular', x: 472, y: 118, w: 129, h: 93 },
+  { id: 'r4',        type: 'regular', x: 666, y: 121, w: 129, h: 93 },
+  { id: 'r5',        type: 'regular', x: 328, y: 262, w: 129, h: 93 },
+  { id: 'r6',        type: 'regular', x: 231, y: 359, w: 129, h: 93 },
+  { id: 'r7',        type: 'regular', x: 327, y: 455, w: 129, h: 93 },
+  { id: 'r8',        type: 'regular', x: 711, y: 460, w: 129, h: 93 },
+  { id: 'r9',        type: 'regular', x: 228, y: 550, w: 129, h: 93 },
+  { id: 'r10',       type: 'regular', x: 326, y: 647, w: 129, h: 93 },
+  { id: 'r11',       type: 'regular', x: 568, y: 695, w: 129, h: 93 },
+  { id: 'r12',       type: 'regular', x: 758, y: 697, w: 129, h: 93 },
+  // Port plot (1) — far right near water
+  { id: 'port-plot', type: 'port',    x:1000, y: 358, w: 129, h: 93 },
+  // Small plots (8) — 30% larger (65×49)
+  { id: 's1',        type: 'small',   x: 457, y: 239, w: 65, h: 49 },
+  { id: 's2',        type: 'small',   x: 794, y: 239, w: 65, h: 49 },
+  { id: 's3',        type: 'small',   x: 746, y: 287, w: 65, h: 49 },
+  { id: 's4',        type: 'small',   x: 456, y: 334, w: 65, h: 49 },
+  { id: 's5',        type: 'small',   x: 792, y: 336, w: 65, h: 49 },
+  { id: 's6',        type: 'small',   x: 456, y: 526, w: 65, h: 49 },
+  { id: 's7',        type: 'small',   x: 792, y: 575, w: 65, h: 49 },
+  { id: 's8',        type: 'small',   x: 505, y: 671, w: 65, h: 49 },
+];
+
+// ── State ─────────────────────────────────────────────────────────────────────
+
+// plotId → buildingId | null
+const plotState   = Object.fromEntries(PLOT_DEFS.map(p => [p.id, null]));
+// buildingId → plotId | null  (regular buildings only)
+const regPlaced   = Object.fromEntries(REGULAR_BUILDINGS.map(b => [b.id, null]));
+// buildingId → count  (small buildings only)
+const smallCounts = Object.fromEntries(SMALL_BUILDINGS.map(b => [b.id, 0]));
+
+let activeMenuPlotId = null;
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+function init() {
+  const container = document.getElementById('map-container');
+
+  for (const p of PLOT_DEFS) {
+    const el = document.createElement('div');
+    el.id           = 'plot-' + p.id;
+    el.className    = 'plot empty';
+    el.dataset.type = p.type;
+    el.dataset.id   = p.id;
+    el.style.cssText = `left:${p.x}px;top:${p.y}px;width:${p.w}px;height:${p.h}px;`;
+    el.addEventListener('click', e => { e.stopPropagation(); onPlotClick(e, p.id); });
+    container.appendChild(el);
+  }
+
+  renderRoster();
+
+  // Close menu when clicking outside
+  document.addEventListener('click', e => {
+    if (activeMenuPlotId === null) return;
+    const menu = document.getElementById('building-menu');
+    if (!menu.contains(e.target) && !e.target.closest('.plot')) closeMenu();
+  });
+
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenu(); });
+}
+
+// ── Menu ──────────────────────────────────────────────────────────────────────
+
+function onPlotClick(e, plotId) {
+  if (document.body.classList.contains('coord-mode')) return;
+  if (activeMenuPlotId === plotId) { closeMenu(); return; }
+  openMenu(e, plotId);
+}
+
+function openMenu(e, plotId) {
+  activeMenuPlotId = plotId;
+  const plotDef = PLOT_DEFS.find(p => p.id === plotId);
+  const content = document.getElementById('menu-content');
+  content.innerHTML = '';
+
+  if (plotDef.type === 'port') {
+    const b = REGULAR_BUILDINGS.find(b => b.id === 'port');
+    content.appendChild(makeMenuItem(b, regPlaced.port !== null));
+  } else if (plotDef.type === 'regular') {
+    buildRegularMenu(content);
+  } else {
+    buildSmallMenu(content);
+  }
+
+  const menu = document.getElementById('building-menu');
+  menu.style.display = 'block';
+  positionMenu(e.clientX, e.clientY, menu);
+}
+
+function buildRegularMenu(content) {
+  const buildings = REGULAR_BUILDINGS.filter(b => !b.portOnly);
+
+  for (const b of buildings.filter(b => b.pinned)) {
+    content.appendChild(makeMenuItem(b, regPlaced[b.id] !== null));
+  }
+
+  for (const cat of ['Basic', 'Production', 'Special']) {
+    const group = buildings.filter(b => b.category === cat);
+    if (!group.length) continue;
+    const lbl = document.createElement('div');
+    lbl.className   = 'menu-category-label';
+    lbl.textContent = cat;
+    content.appendChild(lbl);
+    for (const b of group) {
+      content.appendChild(makeMenuItem(b, regPlaced[b.id] !== null));
+    }
+  }
+}
+
+function buildSmallMenu(content) {
+  for (const b of SMALL_BUILDINGS) {
+    content.appendChild(makeMenuItem(b, false));
+  }
+}
+
+function makeMenuItem(building, isPlaced) {
+  const el = document.createElement('div');
+  el.className = 'menu-item' + (isPlaced ? ' menu-placed' : '');
+  el.innerHTML = `<img src="${building.icon}" alt=""><span>${building.name}</span>`;
+  el.addEventListener('click', e => {
+    e.stopPropagation();
+    onSelectBuilding(building.id, activeMenuPlotId);
+  });
+  return el;
+}
+
+function positionMenu(cx, cy, menu) {
+  const vw  = window.innerWidth;
+  const vh  = window.innerHeight;
+  const mw  = menu.offsetWidth  || 208;
+  const mh  = menu.scrollHeight || 420;
+  const GAP = 10;
+
+  let x = cx + GAP;
+  let y = cy - 16;
+  if (x + mw > vw - GAP) x = cx - mw - GAP;
+  if (x < GAP) x = GAP;
+  if (y + mh > vh - GAP) y = vh - mh - GAP;
+  if (y < GAP) y = GAP;
+
+  menu.style.left = x + 'px';
+  menu.style.top  = y + 'px';
+}
+
+function closeMenu() {
+  document.getElementById('building-menu').style.display = 'none';
+  activeMenuPlotId = null;
+}
+
+// ── Placement ─────────────────────────────────────────────────────────────────
+
+function onSelectBuilding(buildingId, plotId) {
+  const isSmall = SMALL_BUILDINGS.some(b => b.id === buildingId);
+  if (isSmall) placeSmall(buildingId, plotId);
+  else         placeRegular(buildingId, plotId);
+  closeMenu();
+  renderRoster();
+}
+
+function placeRegular(buildingId, plotId) {
+  // If placed elsewhere, vacate the old plot first
+  const oldPlot = regPlaced[buildingId];
+  if (oldPlot && oldPlot !== plotId) clearPlot(oldPlot);
+
+  // Displace whatever is currently on the target plot
+  displaceOccupant(plotId, buildingId);
+
+  plotState[plotId]     = buildingId;
+  regPlaced[buildingId] = plotId;
+  renderPlot(plotId);
+}
+
+function placeSmall(buildingId, plotId) {
+  displaceOccupant(plotId, buildingId);
+  plotState[plotId] = buildingId;
+  smallCounts[buildingId]++;
+  renderPlot(plotId);
+}
+
+// Remove the existing occupant of a plot from state (without re-rendering the plot).
+function displaceOccupant(plotId, incomingId) {
+  const existing = plotState[plotId];
+  if (!existing || existing === incomingId) return;
+  const wasSmall = SMALL_BUILDINGS.some(b => b.id === existing);
+  if (wasSmall) smallCounts[existing] = Math.max(0, smallCounts[existing] - 1);
+  else          regPlaced[existing] = null;
+}
+
+// ── Plot Rendering ────────────────────────────────────────────────────────────
+
+function renderPlot(plotId) {
+  const el        = document.getElementById('plot-' + plotId);
+  const buildingId = plotState[plotId];
+
+  if (!buildingId) {
+    el.className = 'plot empty';
+    el.innerHTML = '';
+    return;
+  }
+
+  const bld = [...REGULAR_BUILDINGS, ...SMALL_BUILDINGS].find(b => b.id === buildingId);
+  el.className = 'plot filled';
+  el.innerHTML = `
+    <img class="plot-icon" src="${bld.icon}" alt="${bld.name}">
+    <div class="plot-clear" title="Remove">✕</div>
+  `;
+  el.querySelector('.plot-clear').addEventListener('click', e => {
+    e.stopPropagation();
+    clearPlot(plotId);
+    renderRoster();
+  });
+}
+
+function clearPlot(plotId) {
+  const buildingId = plotState[plotId];
+  if (!buildingId) return;
+  const wasSmall = SMALL_BUILDINGS.some(b => b.id === buildingId);
+  if (wasSmall) smallCounts[buildingId] = Math.max(0, smallCounts[buildingId] - 1);
+  else          regPlaced[buildingId] = null;
+  plotState[plotId] = null;
+  renderPlot(plotId);
+}
+
+// ── Roster ────────────────────────────────────────────────────────────────────
+
+function renderRoster() {
+  const regEl = document.getElementById('roster-regular');
+  const smlEl = document.getElementById('roster-small');
+
+  const builtReg = REGULAR_BUILDINGS.filter(b => regPlaced[b.id] !== null);
+  regEl.innerHTML = builtReg.length
+    ? builtReg.map(b => `
+        <div class="roster-item">
+          <img src="${b.icon}" alt="${b.name}">
+          <span>${b.name}</span>
+        </div>`).join('')
+    : '<div class="roster-empty">None placed</div>';
+
+  const builtSml = SMALL_BUILDINGS.filter(b => smallCounts[b.id] > 0);
+  smlEl.innerHTML = builtSml.length
+    ? builtSml.map(b => `
+        <div class="roster-item">
+          <img src="${b.icon}" alt="${b.name}">
+          <span>${b.name}</span>
+          <span class="roster-qty">×${smallCounts[b.id]}</span>
+        </div>`).join('')
+    : '<div class="roster-empty">None placed</div>';
+}
+
+// ── Clear Actions ─────────────────────────────────────────────────────────────
+
+function clearAll() {
+  for (const p of PLOT_DEFS) clearPlot(p.id);
+  renderRoster();
+}
+
+function clearByType(type) {
+  const types = type === 'regular' ? ['regular', 'port'] : ['small'];
+  for (const p of PLOT_DEFS.filter(p => types.includes(p.type))) clearPlot(p.id);
+  renderRoster();
+}
+
+// ── Debug ─────────────────────────────────────────────────────────────────────
+
+function toggleDebug() {
+  document.body.classList.toggle('debug');
+  document.getElementById('debug-btn').textContent =
+    document.body.classList.contains('debug') ? 'Hide Plots' : 'Debug Plots';
+}
+
+let _coordEntries = [];
+function toggleCoordMode() {
+  document.body.classList.toggle('coord-mode');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('map-container').addEventListener('click', e => {
+    if (!document.body.classList.contains('coord-mode')) return;
+    const rect = document.getElementById('map-container').getBoundingClientRect();
+    const x = Math.round(e.clientX - rect.left);
+    const y = Math.round(e.clientY - rect.top);
+    _coordEntries.push({x, y});
+    const log = document.getElementById('coord-log');
+    const n = _coordEntries.length;
+    const row = document.createElement('div');
+    row.textContent = `#${n}: x=${x}, y=${y}`;
+    log.appendChild(row);
+    e.stopPropagation();
+  });
+});
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
