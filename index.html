@@ -88,23 +88,59 @@ body {
   position: absolute;
   top: 1px;
   left: 1px;
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
   background: #bb0000;
   color: #fff;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 700;
   cursor: pointer;
   z-index: 5;
-  border: 1.5px solid #ff5555;
+  border: 1px solid #ff5555;
   line-height: 1;
   transition: background 0.1s;
 }
 .plot-clear:hover { background: #880000; }
+
+/* ── Deposits (draggable icons) ───────────────────────────────────────────── */
+
+.deposit-icon-wrap {
+  position: absolute;
+  width: 106px;
+  height: 82px;
+  cursor: grab;
+  z-index: 12;
+  user-select: none;
+  touch-action: none;
+}
+.deposit-icon-wrap:active,
+.deposit-icon-wrap.dragging {
+  cursor: grabbing;
+  filter: brightness(1.25) drop-shadow(0 2px 6px rgba(0,0,0,0.7));
+  z-index: 16;
+}
+.deposit-icon-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  pointer-events: none;
+  display: block;
+}
+
+/* Region outline SVG — shown only while dragging */
+#deposit-region-svg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 11;
+  display: none;
+}
 
 /* Debug mode — toggle with the button to verify plot positions */
 body.debug .plot[data-type="regular"].empty,
@@ -130,6 +166,7 @@ body.debug .plot::after {
   line-height: 1;
 }
 
+
 /* ── Building Menu ───────────────────────────────────────────────────────── */
 
 #building-menu {
@@ -137,13 +174,18 @@ body.debug .plot::after {
   background: #1a1a2e;
   border: 2px solid #3e3e68;
   border-radius: 8px;
-  padding: 8px 6px 10px;
+  padding: 6px 4px 8px;
   z-index: 200;
-  width: 208px;
-  max-height: 74vh;
+  width: 240px;
+  max-height: 86vh;
   overflow-y: auto;
   display: none;
   box-shadow: 0 8px 30px rgba(0,0,0,0.7);
+}
+
+#menu-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
 }
 
 #menu-close {
@@ -158,27 +200,28 @@ body.debug .plot::after {
 #menu-close:hover { color: #bbb; }
 
 .menu-category-label {
-  font-size: 9.5px;
+  grid-column: 1 / -1;
+  font-size: 9px;
   color: #5a5a7a;
   text-transform: uppercase;
   letter-spacing: 1.2px;
-  margin: 9px 6px 3px;
-  padding-top: 8px;
+  margin: 6px 4px 2px;
+  padding-top: 6px;
   border-top: 1px solid #252538;
 }
 
 .menu-item {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 5px 8px;
+  gap: 7px;
+  padding: 3px 6px;
   border-radius: 5px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 11px;
   color: #ccc;
   user-select: none;
   transition: background 0.1s;
-  clear: both;
+  min-width: 0;
 }
 .menu-item:hover { background: #252542; }
 
@@ -191,11 +234,21 @@ body.debug .plot::after {
 }
 
 .menu-item img {
-  width: 30px;
-  height: 30px;
+  width: 22px;
+  height: 22px;
   object-fit: contain;
   image-rendering: pixelated;
   flex-shrink: 0;
+}
+.menu-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+/* Full-width items (pinned buildings, port-only menu, deposit menu) */
+.menu-item.full-width {
+  grid-column: 1 / -1;
 }
 
 /* ── Roster ──────────────────────────────────────────────────────────────── */
@@ -308,7 +361,8 @@ body.debug .plot::after {
 #coord-btn:hover { color: #9a9aba; border-color: #4a4a6a; }
 body.coord-mode #coord-btn { color: #f0a040; border-color: #f0a040; }
 body.coord-mode #map-container { cursor: crosshair; }
-body.coord-mode .plot { pointer-events: none; opacity: 0.25; }
+body.coord-mode .plot,
+body.coord-mode .deposit-icon-wrap { pointer-events: none; opacity: 0.25; }
 
 #coord-display {
   display: none;
@@ -338,9 +392,10 @@ body.coord-mode #coord-display { display: block; }
     <button class="ctrl-btn" onclick="clearAll()">Clear All</button>
     <button class="ctrl-btn" onclick="clearByType('regular')">Clear Regular</button>
     <button class="ctrl-btn" onclick="clearByType('small')">Clear Small</button>
+    <button class="ctrl-btn" onclick="resetDeposits()">Reset Deposits</button>
   </div>
   <div id="map-container">
-    <img id="map-img" src="StartingBase.png" alt="Starting Base">
+    <img id="map-img" src="BaseMap.png" alt="Starting Base">
   </div>
   <div id="roster">
     <div class="roster-heading">Built Buildings</div>
@@ -351,6 +406,10 @@ body.coord-mode #coord-display { display: block; }
     <div class="roster-section">
       <div class="roster-section-label">Small</div>
       <div id="roster-small"><div class="roster-empty">None placed</div></div>
+    </div>
+    <div class="roster-section">
+      <div class="roster-section-label">Deposits</div>
+      <div id="roster-deposits"></div>
     </div>
   </div>
 </div>
@@ -390,7 +449,12 @@ const REGULAR_BUILDINGS = [
   { id: 'siege',      name: 'Siege Camp',      icon: 'Building.Siege.Icon.png',     category: 'Special' },
   { id: 'coin',       name: 'Coin Stamper',    icon: 'Building.Coin.Icon.png',      category: 'Special' },
   { id: 'elemental',  name: 'Elemental Tower', icon: 'Building.Elemental.Icon.png', category: 'Special' },
-  { id: 'monument',   name: 'Monument',        icon: 'Building.Monument.Icon.png',  category: 'Special' },
+  { id: 'monument',   name: 'Monument',        icon: 'Building.Monument.Icon.png',  category: 'Special', multi: true },
+  // Dwarven Builder
+  { id: 'courthouse', name: 'Courthouse',      icon: 'Building.Special.Courthouse.Icon.png', category: 'Dwarven Builder' },
+  { id: 'treasury',   name: 'Treasury',        icon: 'Building.Special.Treasury.Icon.png',   category: 'Dwarven Builder' },
+  { id: 'warcouncil', name: 'War Council',     icon: 'Building.Special.WarCouncil.Icon.png', category: 'Dwarven Builder' },
+  { id: 'grove',      name: 'Grove',           icon: 'Building.Special.Grove.Icon.png',      category: 'Dwarven Builder' },
   // Port — only shown on the port plot
   { id: 'port',       name: 'Port',            icon: 'Building.Port.Icon.png',      category: 'Special', portOnly: true },
 ];
@@ -404,45 +468,91 @@ const SMALL_BUILDINGS = [
   { id: 'geologist',  name: 'Geologist Tent',  icon: 'Building.Small.Geologist.png' },
 ];
 
+// ── Deposit Data ──────────────────────────────────────────────────────────────
+
+const DEPOSIT_ICONS = [
+  { id: 'gold',  name: 'Gold Deposit',  icon: 'Deposit.Gold.png' },
+  { id: 'stone', name: 'Stone Deposit', icon: 'Deposit.Stone.png' },
+];
+const DEPOSIT_W = 106, DEPOSIT_H = 82;
+
+// Boundary polygon of the deposit region.
+// Traced from the highlighted area in BaseMap - Deposits.png.
+const DEPOSIT_REGION = [
+  {x: 276, y: 130},
+  {x:  29, y: 351},
+  {x:  35, y: 695},
+  {x: 279, y: 985},
+  {x: 419, y:1034},
+  {x: 836, y:1022},
+  {x: 897, y: 945},
+  {x: 980, y: 941},
+  {x: 979, y: 832},
+  {x:1041, y: 764},
+  {x: 897, y: 766},
+  {x: 891, y: 862},
+  {x: 439, y: 886},
+  {x: 197, y: 650},
+  {x: 192, y: 387},
+  {x: 286, y: 260},
+];
+
+// Default spawn positions — bottom-middle of the region
+const DEPOSIT_DEFAULT = {
+  gold:  { x: 450, y: 970 },
+  stone: { x: 600, y: 970 },
+};
+
 // ── Plot Definitions ──────────────────────────────────────────────────────────
 // Positions are approximate — click "Debug Plots" to see outlines and report
 // any that need adjusting. x/y = top-left offset from map image edge.
 
 const PLOT_DEFS = [
-  // Regular plots (12) — 50% larger (129×93), positions adjusted to keep same centers
-  { id: 'r1',        type: 'regular', x: 472, y:  22, w: 129, h: 93 },
-  { id: 'r2',        type: 'regular', x: 665, y:  22, w: 129, h: 93 },
-  { id: 'r3',        type: 'regular', x: 472, y: 118, w: 129, h: 93 },
-  { id: 'r4',        type: 'regular', x: 666, y: 121, w: 129, h: 93 },
-  { id: 'r5',        type: 'regular', x: 328, y: 262, w: 129, h: 93 },
-  { id: 'r6',        type: 'regular', x: 231, y: 359, w: 129, h: 93 },
-  { id: 'r7',        type: 'regular', x: 327, y: 455, w: 129, h: 93 },
-  { id: 'r8',        type: 'regular', x: 711, y: 460, w: 129, h: 93 },
-  { id: 'r9',        type: 'regular', x: 228, y: 550, w: 129, h: 93 },
-  { id: 'r10',       type: 'regular', x: 326, y: 647, w: 129, h: 93 },
-  { id: 'r11',       type: 'regular', x: 568, y: 695, w: 129, h: 93 },
-  { id: 'r12',       type: 'regular', x: 758, y: 697, w: 129, h: 93 },
-  // Port plot (1) — far right near water
-  { id: 'port-plot', type: 'port',    x:1000, y: 358, w: 129, h: 93 },
-  // Small plots (8) — 30% larger (65×49)
-  { id: 's1',        type: 'small',   x: 457, y: 239, w: 65, h: 49 },
-  { id: 's2',        type: 'small',   x: 794, y: 239, w: 65, h: 49 },
-  { id: 's3',        type: 'small',   x: 746, y: 287, w: 65, h: 49 },
-  { id: 's4',        type: 'small',   x: 456, y: 334, w: 65, h: 49 },
-  { id: 's5',        type: 'small',   x: 792, y: 336, w: 65, h: 49 },
-  { id: 's6',        type: 'small',   x: 456, y: 526, w: 65, h: 49 },
-  { id: 's7',        type: 'small',   x: 792, y: 575, w: 65, h: 49 },
-  { id: 's8',        type: 'small',   x: 505, y: 671, w: 65, h: 49 },
+  // Regular plots (14) — 135×98, top-left = center − 67, center − 49
+  { id: 'r1',        type: 'regular', x: 451, y:  47, w: 135, h: 98 }, // center 518, 96
+  { id: 'r2',        type: 'regular', x: 642, y:  45, w: 135, h: 98 }, // center 709, 94
+  { id: 'r3',        type: 'regular', x: 449, y: 142, w: 135, h: 98 }, // center 516, 191
+  { id: 'r4',        type: 'regular', x: 644, y: 144, w: 135, h: 98 }, // center 711, 193
+  { id: 'r5',        type: 'regular', x: 308, y: 286, w: 135, h: 98 }, // center 375, 335
+  { id: 'r6',        type: 'regular', x: 212, y: 382, w: 135, h: 98 }, // center 279, 431
+  { id: 'r8',        type: 'regular', x: 307, y: 480, w: 135, h: 98 }, // center 374, 529
+  { id: 'r9',        type: 'regular', x: 691, y: 479, w: 135, h: 98 }, // center 758, 528
+  { id: 'r10',       type: 'regular', x: 211, y: 575, w: 135, h: 98 }, // center 278, 624
+  { id: 'r11',       type: 'regular', x: 309, y: 667, w: 135, h: 98 }, // center 376, 716
+  { id: 'r12',       type: 'regular', x: 545, y: 718, w: 135, h: 98 }, // center 612, 767
+  { id: 'r13',       type: 'regular', x: 739, y: 720, w: 135, h: 98 }, // center 806, 769
+  { id: 'r14',       type: 'regular', x: 838, y: 620, w: 135, h: 98 }, // center 905, 669
+  // Port plot (1) — right side near water, center 1048, 433
+  { id: 'port-plot', type: 'port',    x: 981, y: 384, w: 135, h: 98 },
+  // Small plots (8) — 69×51, top-left = center − 35, center − 26
+  { id: 's1',        type: 'small',   x: 435, y: 260, w: 69, h: 51 }, // center 470, 286
+  { id: 's2',        type: 'small',   x: 773, y: 260, w: 69, h: 51 }, // center 808, 286
+  { id: 's3',        type: 'small',   x: 723, y: 308, w: 69, h: 51 }, // center 758, 334
+  { id: 's4',        type: 'small',   x: 435, y: 357, w: 69, h: 51 }, // center 470, 383
+  { id: 's5',        type: 'small',   x: 772, y: 356, w: 69, h: 51 }, // center 807, 382
+  { id: 's6',        type: 'small',   x: 436, y: 549, w: 69, h: 51 }, // center 471, 575
+  { id: 's7',        type: 'small',   x: 484, y: 693, w: 69, h: 51 }, // center 519, 719
+  { id: 's8',        type: 'small',   x: 773, y: 597, w: 69, h: 51 }, // center 808, 623
 ];
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
 // plotId → buildingId | null
 const plotState   = Object.fromEntries(PLOT_DEFS.map(p => [p.id, null]));
-// buildingId → plotId | null  (regular buildings only)
+// buildingId → plotId | null  (regular, non-multi buildings only)
 const regPlaced   = Object.fromEntries(REGULAR_BUILDINGS.map(b => [b.id, null]));
 // buildingId → count  (small buildings only)
 const smallCounts = Object.fromEntries(SMALL_BUILDINGS.map(b => [b.id, 0]));
+// buildingId → count  (multi-placement regular buildings)
+const multiCounts = Object.fromEntries(REGULAR_BUILDINGS.filter(b => b.multi).map(b => [b.id, 0]));
+// Deposit drag positions — center coords within DEPOSIT_REGION
+const depositPos = {
+  gold:  { ...DEPOSIT_DEFAULT.gold },
+  stone: { ...DEPOSIT_DEFAULT.stone },
+};
+let _dragDepositId   = null;
+let _dragStartMouse  = null;
+let _dragStartPos    = null;
 
 let activeMenuPlotId = null;
 
@@ -459,6 +569,30 @@ function init() {
     el.dataset.id   = p.id;
     el.style.cssText = `left:${p.x}px;top:${p.y}px;width:${p.w}px;height:${p.h}px;`;
     el.addEventListener('click', e => { e.stopPropagation(); onPlotClick(e, p.id); });
+    container.appendChild(el);
+  }
+
+  // Deposit region SVG overlay (shown while dragging)
+  const regionPts = DEPOSIT_REGION.map(p => `${p.x},${p.y}`).join(' ');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.id = 'deposit-region-svg';
+  svg.innerHTML = `<polygon points="${regionPts}"
+    fill="rgba(220,80,80,0.07)"
+    stroke="rgba(220,80,80,0.55)"
+    stroke-width="2"
+    stroke-dasharray="7,4"/>`;
+  container.appendChild(svg);
+
+  // Draggable deposit icons
+  for (const dep of DEPOSIT_ICONS) {
+    const el = document.createElement('div');
+    el.id        = 'deposit-' + dep.id;
+    el.className = 'deposit-icon-wrap';
+    el.title     = dep.name;
+    el.innerHTML = `<img src="${dep.icon}" alt="${dep.name}" draggable="false">`;
+    el.style.left = (depositPos[dep.id].x - DEPOSIT_W / 2) + 'px';
+    el.style.top  = (depositPos[dep.id].y - DEPOSIT_H / 2) + 'px';
+    el.addEventListener('mousedown', e => startDepositDrag(e, dep.id));
     container.appendChild(el);
   }
 
@@ -490,7 +624,7 @@ function openMenu(e, plotId) {
 
   if (plotDef.type === 'port') {
     const b = REGULAR_BUILDINGS.find(b => b.id === 'port');
-    content.appendChild(makeMenuItem(b, regPlaced.port !== null));
+    content.appendChild(makeMenuItem(b, regPlaced.port !== null, true));
   } else if (plotDef.type === 'regular') {
     buildRegularMenu(content);
   } else {
@@ -506,10 +640,10 @@ function buildRegularMenu(content) {
   const buildings = REGULAR_BUILDINGS.filter(b => !b.portOnly);
 
   for (const b of buildings.filter(b => b.pinned)) {
-    content.appendChild(makeMenuItem(b, regPlaced[b.id] !== null));
+    content.appendChild(makeMenuItem(b, regPlaced[b.id] !== null, true));
   }
 
-  for (const cat of ['Basic', 'Production', 'Special']) {
+  for (const cat of ['Basic', 'Production', 'Special', 'Dwarven Builder']) {
     const group = buildings.filter(b => b.category === cat);
     if (!group.length) continue;
     const lbl = document.createElement('div');
@@ -517,7 +651,7 @@ function buildRegularMenu(content) {
     lbl.textContent = cat;
     content.appendChild(lbl);
     for (const b of group) {
-      content.appendChild(makeMenuItem(b, regPlaced[b.id] !== null));
+      content.appendChild(makeMenuItem(b, !b.multi && regPlaced[b.id] !== null));
     }
   }
 }
@@ -528,9 +662,9 @@ function buildSmallMenu(content) {
   }
 }
 
-function makeMenuItem(building, isPlaced) {
+function makeMenuItem(building, isPlaced, fullWidth = false) {
   const el = document.createElement('div');
-  el.className = 'menu-item' + (isPlaced ? ' menu-placed' : '');
+  el.className = 'menu-item' + (isPlaced ? ' menu-placed' : '') + (fullWidth ? ' full-width' : '');
   el.innerHTML = `<img src="${building.icon}" alt=""><span>${building.name}</span>`;
   el.addEventListener('click', e => {
     e.stopPropagation();
@@ -573,6 +707,16 @@ function onSelectBuilding(buildingId, plotId) {
 }
 
 function placeRegular(buildingId, plotId) {
+  const bld = REGULAR_BUILDINGS.find(b => b.id === buildingId);
+
+  if (bld.multi) {
+    displaceOccupant(plotId, buildingId);
+    plotState[plotId] = buildingId;
+    multiCounts[buildingId]++;
+    renderPlot(plotId);
+    return;
+  }
+
   // If placed elsewhere, vacate the old plot first
   const oldPlot = regPlaced[buildingId];
   if (oldPlot && oldPlot !== plotId) clearPlot(oldPlot);
@@ -597,8 +741,10 @@ function displaceOccupant(plotId, incomingId) {
   const existing = plotState[plotId];
   if (!existing || existing === incomingId) return;
   const wasSmall = SMALL_BUILDINGS.some(b => b.id === existing);
-  if (wasSmall) smallCounts[existing] = Math.max(0, smallCounts[existing] - 1);
-  else          regPlaced[existing] = null;
+  const isMulti  = REGULAR_BUILDINGS.some(b => b.id === existing && b.multi);
+  if (wasSmall)      smallCounts[existing] = Math.max(0, smallCounts[existing] - 1);
+  else if (isMulti)  multiCounts[existing] = Math.max(0, multiCounts[existing] - 1);
+  else               regPlaced[existing] = null;
 }
 
 // ── Plot Rendering ────────────────────────────────────────────────────────────
@@ -630,8 +776,10 @@ function clearPlot(plotId) {
   const buildingId = plotState[plotId];
   if (!buildingId) return;
   const wasSmall = SMALL_BUILDINGS.some(b => b.id === buildingId);
-  if (wasSmall) smallCounts[buildingId] = Math.max(0, smallCounts[buildingId] - 1);
-  else          regPlaced[buildingId] = null;
+  const isMulti  = REGULAR_BUILDINGS.some(b => b.id === buildingId && b.multi);
+  if (wasSmall)      smallCounts[buildingId] = Math.max(0, smallCounts[buildingId] - 1);
+  else if (isMulti)  multiCounts[buildingId] = Math.max(0, multiCounts[buildingId] - 1);
+  else               regPlaced[buildingId] = null;
   plotState[plotId] = null;
   renderPlot(plotId);
 }
@@ -641,13 +789,17 @@ function clearPlot(plotId) {
 function renderRoster() {
   const regEl = document.getElementById('roster-regular');
   const smlEl = document.getElementById('roster-small');
+  const depEl = document.getElementById('roster-deposits');
 
-  const builtReg = REGULAR_BUILDINGS.filter(b => regPlaced[b.id] !== null);
-  regEl.innerHTML = builtReg.length
-    ? builtReg.map(b => `
+  const builtReg   = REGULAR_BUILDINGS.filter(b => !b.multi && regPlaced[b.id] !== null);
+  const builtMulti = REGULAR_BUILDINGS.filter(b => b.multi && multiCounts[b.id] > 0);
+  const allReg = [...builtReg, ...builtMulti];
+  regEl.innerHTML = allReg.length
+    ? allReg.map(b => `
         <div class="roster-item">
           <img src="${b.icon}" alt="${b.name}">
           <span>${b.name}</span>
+          ${b.multi ? `<span class="roster-qty">×${multiCounts[b.id]}</span>` : ''}
         </div>`).join('')
     : '<div class="roster-empty">None placed</div>';
 
@@ -660,12 +812,20 @@ function renderRoster() {
           <span class="roster-qty">×${smallCounts[b.id]}</span>
         </div>`).join('')
     : '<div class="roster-empty">None placed</div>';
+
+  // Deposits are always present (draggable icons on the map)
+  depEl.innerHTML = DEPOSIT_ICONS.map(d => `
+      <div class="roster-item">
+        <img src="${d.icon}" alt="${d.name}">
+        <span>${d.name}</span>
+      </div>`).join('');
 }
 
 // ── Clear Actions ─────────────────────────────────────────────────────────────
 
 function clearAll() {
   for (const p of PLOT_DEFS) clearPlot(p.id);
+  resetDeposits();
   renderRoster();
 }
 
@@ -673,6 +833,99 @@ function clearByType(type) {
   const types = type === 'regular' ? ['regular', 'port'] : ['small'];
   for (const p of PLOT_DEFS.filter(p => types.includes(p.type))) clearPlot(p.id);
   renderRoster();
+}
+
+// ── Deposits (draggable) ──────────────────────────────────────────────────────
+
+/** Ray-casting point-in-polygon test. */
+function pointInPolygon(x, y, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y;
+    const xj = poly[j].x, yj = poly[j].y;
+    const intersect = ((yi > y) !== (yj > y)) &&
+                      (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/** Nearest point on segment AB to point P. */
+function nearestPointOnSegment(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return { x: ax, y: ay };
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  return { x: ax + t * dx, y: ay + t * dy };
+}
+
+/** Nearest point on any edge of the polygon to point P. */
+function nearestPointInPolygon(x, y, poly) {
+  let best = null, bestDist = Infinity;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const c = nearestPointOnSegment(x, y, poly[j].x, poly[j].y, poly[i].x, poly[i].y);
+    const d = (c.x - x) ** 2 + (c.y - y) ** 2;
+    if (d < bestDist) { bestDist = d; best = c; }
+  }
+  return best;
+}
+
+function startDepositDrag(e, depositId) {
+  if (document.body.classList.contains('coord-mode')) return;
+  e.preventDefault();
+  _dragDepositId  = depositId;
+  _dragStartMouse = { x: e.clientX, y: e.clientY };
+  _dragStartPos   = { ...depositPos[depositId] };
+
+  const el = document.getElementById('deposit-' + depositId);
+  el.classList.add('dragging');
+  document.getElementById('deposit-region-svg').style.display = 'block';
+
+  document.addEventListener('mousemove', onDepositDrag);
+  document.addEventListener('mouseup',   endDepositDrag);
+}
+
+function onDepositDrag(e) {
+  if (!_dragDepositId) return;
+  const rect = document.getElementById('map-container').getBoundingClientRect();
+  const scaleX = rect.width  / document.getElementById('map-img').naturalWidth  || 1;
+  const scaleY = rect.height / document.getElementById('map-img').naturalHeight || 1;
+
+  // Candidate center in map-image pixels
+  let cx = _dragStartPos.x + (e.clientX - _dragStartMouse.x) / (scaleX || 1);
+  let cy = _dragStartPos.y + (e.clientY - _dragStartMouse.y) / (scaleY || 1);
+
+  // Constrain to deposit region
+  if (!pointInPolygon(cx, cy, DEPOSIT_REGION)) {
+    const snapped = nearestPointInPolygon(cx, cy, DEPOSIT_REGION);
+    cx = snapped.x;
+    cy = snapped.y;
+  }
+
+  depositPos[_dragDepositId] = { x: cx, y: cy };
+  const el = document.getElementById('deposit-' + _dragDepositId);
+  el.style.left = (cx - DEPOSIT_W / 2) + 'px';
+  el.style.top  = (cy - DEPOSIT_H / 2) + 'px';
+}
+
+function endDepositDrag(e) {
+  if (!_dragDepositId) return;
+  const el = document.getElementById('deposit-' + _dragDepositId);
+  el.classList.remove('dragging');
+  document.getElementById('deposit-region-svg').style.display = 'none';
+  _dragDepositId = _dragStartMouse = _dragStartPos = null;
+  document.removeEventListener('mousemove', onDepositDrag);
+  document.removeEventListener('mouseup',   endDepositDrag);
+}
+
+function resetDeposits() {
+  endDepositDrag();
+  for (const dep of DEPOSIT_ICONS) {
+    depositPos[dep.id] = { ...DEPOSIT_DEFAULT[dep.id] };
+    const el = document.getElementById('deposit-' + dep.id);
+    el.style.left = (depositPos[dep.id].x - DEPOSIT_W / 2) + 'px';
+    el.style.top  = (depositPos[dep.id].y - DEPOSIT_H / 2) + 'px';
+  }
 }
 
 // ── Debug ─────────────────────────────────────────────────────────────────────
